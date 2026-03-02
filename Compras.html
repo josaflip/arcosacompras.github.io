@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Control de Compras</title>
+
+<style>
+body {
+    font-family: Arial, sans-serif;
+    padding: 15px;
+    max-width: 600px;
+    margin: auto;
+}
+
+h2, h3 {
+    text-align: center;
+}
+
+.fila {
+    display: flex;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.fila label {
+    width: 90px;
+    font-weight: bold;
+}
+
+.fila input {
+    flex: 1;
+    padding: 7px;
+}
+
+button {
+    padding: 8px;
+    margin: 3px;
+    font-size: 14px;
+}
+
+.resumen {
+    padding: 12px;
+    margin: 10px 0;
+    text-align: center;
+    border-radius: 6px;
+    border: 1px solid;
+}
+
+.resumen span {
+    font-size: 22px;
+    font-weight: bold;
+}
+
+.restante {
+    background: #e8f5e9;
+    border-color: #a5d6a7;
+}
+.restante span { color: #1b5e20; }
+
+.gastado {
+    background: #e3f2fd;
+    border-color: #90caf9;
+}
+.gastado span { color: #0d47a1; }
+
+.negativo span {
+    color: red !important;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+    font-size: 13px;
+}
+
+th, td {
+    border: 1px solid #ccc;
+    padding: 6px;
+    text-align: center;
+}
+
+th {
+    background: #f2f2f2;
+}
+</style>
+</head>
+
+<body>
+
+<h2>馃挵 Control de Compras</h2>
+
+<h3>馃捀 Movimiento de efectivo</h3>
+
+<div class="fila">
+    <label>Monto:</label>
+    <input type="number" id="dineroMovimiento">
+</div>
+
+<div style="text-align:center;">
+    <button onclick="ingresarDinero()">Aceptar</button>
+    <button onclick="retirarDinero()">Retirar</button>
+</div>
+
+<div class="resumen restante" id="resRestante">
+    Dinero restante<br>
+    $<span id="restante">0.00</span>
+</div>
+
+<div class="resumen gastado">
+    Total gastado<br>
+    $<span id="totalGastado">0.00</span>
+</div>
+<div style="text-align:right; font-size:11px; opacity:0.6; margin-top:4px;">
+    Total histórico: $<span id="totalGeneral">0.00</span>
+</div>
+<hr>
+
+<h3>馃Ь Registrar gasto</h3>
+
+<div class="fila">
+    <label>Concepto:</label>
+    <input type="text" id="concepto">
+</div>
+
+<div class="fila">
+    <label>Monto:</label>
+    <input type="number" id="monto">
+</div>
+
+<button style="width:100%;" onclick="agregarGasto()">Agregar / Guardar</button>
+
+<table>
+<thead>
+<tr>
+    <th>Fecha</th>
+    <th>Concepto</th>
+    <th>Monto</th>
+    <th>Acciones</th>
+</tr>
+</thead>
+<tbody id="tabla"></tbody>
+</table>
+
+<br>
+
+<button style="width:100%;" onclick="exportarExcel()">馃搳 Exportar a Excel</button>
+<button style="width:100%;" onclick="resetear()">馃攧 Resetear</button>
+
+<script>
+let dineroRestante = 0;
+let gastos = [];
+let editIndex = null;
+
+window.onload = () => {
+    let data = JSON.parse(localStorage.getItem("controlCompras"));
+    if (data) {
+        dineroRestante = data.dineroRestante;
+        gastos = data.gastos;
+        actualizarTodo();
+    }
+};
+
+function guardarDatos() {
+    localStorage.setItem("controlCompras", JSON.stringify({
+        dineroRestante,
+        gastos
+    }));
+}
+
+function ingresarDinero() {
+    let m = Number(dineroMovimiento.value);
+    if (m <= 0) return alert("Monto inv谩lido");
+    dineroRestante += m;
+    dineroMovimiento.value = "";
+    actualizarTodo();
+}
+
+function retirarDinero() {
+    let m = Number(dineroMovimiento.value);
+    if (m <= 0) return alert("Monto inv谩lido");
+    dineroRestante -= m;
+    dineroMovimiento.value = "";
+    actualizarTodo();
+}
+
+function agregarGasto() {
+    let c = concepto.value.trim();
+    let m = Number(monto.value);
+    if (!c || m <= 0) return alert("Datos incorrectos");
+
+    if (editIndex !== null) {
+        gastos[editIndex].concepto = c;
+        gastos[editIndex].monto = m;
+        editIndex = null;
+    } else {
+        gastos.push({
+            fecha: new Date().toLocaleString(),
+            concepto: c,
+            monto: m
+        });
+    }
+
+    dineroRestante -= m;
+    concepto.value = "";
+    monto.value = "";
+    actualizarTodo();
+}
+
+function editarGasto(i) {
+    concepto.value = gastos[i].concepto;
+    monto.value = gastos[i].monto;
+    dineroRestante += gastos[i].monto;
+    editIndex = i;
+}
+
+function eliminarGasto(i) {
+    if (!confirm("驴Eliminar este gasto?")) return;
+    dineroRestante += gastos[i].monto;
+    gastos.splice(i, 1);
+    actualizarTodo();
+}
+
+function mover(i, dir) {
+    let j = i + dir;
+    if (j < 0 || j >= gastos.length) return;
+    [gastos[i], gastos[j]] = [gastos[j], gastos[i]];
+    actualizarTodo();
+}
+
+function exportarExcel() {
+    let csv = "Fecha,Concepto,Monto\n";
+    gastos.forEach(g => {
+        csv += `${g.fecha},${g.concepto},${g.monto}\n`;
+    });
+    csv += `\nTotal gastado,${gastos.reduce((s,g)=>s+g.monto,0)}\n`;
+    csv += `Dinero restante,${dineroRestante}`;
+
+    let blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    let link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "control_compras.csv";
+    link.click();
+}
+
+function resetear() {
+    if (!confirm("驴Seguro? Exporta antes de borrar.")) return;
+    dineroRestante = 0;
+    gastos = [];
+    localStorage.removeItem("controlCompras");
+    actualizarTodo();
+}
+
+function actualizarTodo() {
+    let total = gastos.reduce((s, g) => s + g.monto, 0);
+let totalGeneral = dineroRestante + total;
+    restante.textContent = dineroRestante.toFixed(2);
+    totalGastado.textContent = total.toFixed(2);
+    document.getElementById("totalGeneral").textContent = totalGeneral.toFixed(2);
+    resRestante.classList.toggle("negativo", dineroRestante < 0);
+
+    tabla.innerHTML = "";
+    gastos.forEach((g, i) => {
+        tabla.innerHTML += `
+        <tr>
+            <td>${g.fecha}</td>
+            <td>${g.concepto}</td>
+            <td>$${g.monto.toFixed(2)}</td>
+            <td>
+                <button onclick="editarGasto(${i})">鉁忥笍</button>
+                <button onclick="mover(${i},-1)">猬嗭笍</button>
+                <button onclick="mover(${i},1)">猬囷笍</button>
+                <button onclick="eliminarGasto(${i})">馃棏锔�</button>
+            </td>
+        </tr>`;
+    });
+
+    guardarDatos();
+}
+
+const dineroMovimiento = document.getElementById("dineroMovimiento");
+const concepto = document.getElementById("concepto");
+const monto = document.getElementById("monto");
+const tabla = document.getElementById("tabla");
+const restante = document.getElementById("restante");
+const totalGastado = document.getElementById("totalGastado");
+const resRestante = document.getElementById("resRestante");
+</script>
+
+</body>
+</html>
